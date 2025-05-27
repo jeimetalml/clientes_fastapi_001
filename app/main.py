@@ -12,6 +12,16 @@ class LoginData(BaseModel):
     email: str
     contrasenia: str
 
+# Modelo para validar datos de cliente al crear o actualizar:
+class Cliente(BaseModel):
+    rut: int
+    nombre_completo: str
+    email: str
+    contrasenia: str
+    region: str
+    comuna: str
+    direccion: str
+
 # Haremos la conexión con ORACLE:
 def get_conexion(): # variable de conexion
     try:
@@ -41,10 +51,10 @@ def get_clientes():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener usuarios: {str(e)}") # Error de tipo petición y se le entregan: codigo de error, mensaje a entregar con ese codigo y se convierte a string la variable
     finally:
-        if 'cone' in locals(): # Esto cierra la conexión
-            cone.close()
         if 'cursor' in locals(): # Esto cierra el cursor
             cursor.close()
+        if 'cone' in locals(): # Esto cierra la conexión
+            cone.close()
 
 # POST para login, validando contraseña con hash
 @api.post("/login")
@@ -70,8 +80,105 @@ def login(datos: LoginData): # recibe un JSON con email y contrasenia validado c
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}") #Error de tipo petición y se le entregan: codigo de error, mensaje a entregar con ese codigo y se convierte a string la variable
     finally:
-        if 'cone' in locals(): #Esto cierra la conexión
-            cone.close()
         if 'cursor' in locals(): #Esto cierra el cursor
             cursor.close()
-            
+        if 'cone' in locals(): #Esto cierra la conexión
+            cone.close()
+
+# POST para crear un nuevo cliente
+@api.post("/clientes")
+def crear_cliente(cliente: Cliente):
+    try:
+        cone = get_conexion() # conexion
+        cursor = cone.cursor() # cursor
+        # Hasheamos la contraseña antes de guardarla
+        hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        # Insert SQL con bind variables para evitar inyección SQL
+        sql = """
+        INSERT INTO CLIENTES (RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION)
+        VALUES (:rut, :nombre, :email, :contrasenia, :region, :comuna, :direccion)
+        """
+        cursor.execute(sql, {
+            "rut": cliente.rut,
+            "nombre": cliente.nombre_completo,
+            "email": cliente.email,
+            "contrasenia": hashed_password,
+            "region": cliente.region,
+            "comuna": cliente.comuna,
+            "direccion": cliente.direccion
+        })
+        cone.commit()
+        return {"mensaje": "Cliente creado exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al crear cliente: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'cone' in locals():
+            cone.close()
+
+# PUT para actualizar un cliente existente (por rut)
+@api.put("/clientes/{rut}")
+def actualizar_cliente(rut: int, cliente: Cliente):
+    try:
+        cone = get_conexion()
+        cursor = cone.cursor()
+        # Hasheamos la contraseña antes de actualizar
+        hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        # Verificamos que el cliente exista
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        # Actualizamos los datos
+        sql = """
+        UPDATE CLIENTES SET
+            NOMBRE_COMPLETO = :nombre,
+            EMAIL = :email,
+            CONTRASENIA = :contrasenia,
+            REGION = :region,
+            COMUNA = :comuna,
+            DIRECCION = :direccion
+        WHERE RUT = :rut
+        """
+        cursor.execute(sql, {
+            "nombre": cliente.nombre_completo,
+            "email": cliente.email,
+            "contrasenia": hashed_password,
+            "region": cliente.region,
+            "comuna": cliente.comuna,
+            "direccion": cliente.direccion,
+            "rut": rut
+        })
+        cone.commit()
+        return {"mensaje": "Cliente actualizado exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'cone' in locals():
+            cone.close()
+
+# DELETE para eliminar un cliente por rut
+@api.delete("/clientes/{rut}")
+def eliminar_cliente(rut: int):
+    try:
+        cone = get_conexion()
+        cursor = cone.cursor()
+        # Verificamos que exista el cliente antes de eliminar
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        # Ejecutamos delete
+        cursor.execute("DELETE FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        cone.commit()
+        return {"mensaje": "Cliente eliminado exitosamente"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar cliente: {str(e)}")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'cone' in locals():
+            cone.close()
