@@ -33,7 +33,7 @@ def get_clientes():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obetener usuarios: {str(e)}") #Error de tipo petición y se le entregan: codigo de rror, mensaje a entregar con ese codigo y se convierte a string la variable
     finally: 
-        if 'cone' in locals(): #Esto cierra la conexión
-            cone.close()
         if 'cursor' in locals(): #Esto cierra el cursor
             cursor.close()
+        if 'cone' in locals(): #Esto cierra la conexion
+            cone.close()
