@@ -1,39 +1,77 @@
-#Pondremos una libreria (minuscula es la libreria y mayusculas son los metodos que tiene la libreria):
-from fastapi import FastAPI, HTTPException #HTTPException es un error de tipo petición
-import cx_Oracle #libreria que conecta python con ORACLE
-#creamos una variable de la API:
+# Pondremos una libreria (minuscula es la libreria y mayusculas son los metodos que tiene la libreria):
+from fastapi import FastAPI, HTTPException # HTTPException es un error de tipo petición
+from pydantic import BaseModel  # Para validar y estructurar datos de entrada
+import cx_Oracle # libreria que conecta python con ORACLE
+import bcrypt  # libreria para hashear y validar contraseñas
+
+# creamos una variable de la API:
 api = FastAPI()
 
-#Haremos la conexión con ORACLE:
-def get_conexion(): #variable de conexion
+# Modelo para validar datos de login (estructura que espera el endpoint):
+class LoginData(BaseModel):
+    email: str
+    contrasenia: str
+
+# Haremos la conexión con ORACLE:
+def get_conexion(): # variable de conexion
     try:
-        dsn = cx_Oracle.makedsn("localhost", 1521, service_name="XE") # con dsn l edigo de donde vienen los datos para la conexion / se llama a cx_Oracle para crear el origen de datos y se le entrega: nombre o número del host, puerto, nombre del servidor(en cada pc es diferente)
-        conexion = cx_Oracle.connect(user="integracion", password="integracion", dsn=dsn) #con esto creamos la conexion y entregamos 3 cosas: usuario de BD, clave usuario BD, donde se va a conectar
+        dsn = cx_Oracle.makedsn("localhost", 1521, service_name="XE") # con dsn le digo de donde vienen los datos para la conexion / se llama a cx_Oracle para crear el origen de datos y se le entrega: nombre o número del host, puerto, nombre del servidor(en cada pc es diferente)
+        conexion = cx_Oracle.connect(user="integracion", password="integracion", dsn=dsn) # con esto creamos la conexion y entregamos 3 cosas: usuario de BD, clave usuario BD, donde se va a conectar
         return conexion
     except Exception as ex:
-        print("Error al conectar:",ex)
+        print("Error al conectar:", ex)
         raise
 
-#Ahora haremos endpoints:
+# Ahora haremos endpoints:
 
-#GET
+# GET
 @api.get("/clientes") # en / va la ruta en la que aparecerán los datos
 def get_clientes():
     try:
-        cone = get_conexion() #se crea variable y se le entrega a cone
-        cursor = cone.cursor() #cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
-        sql1 = "SELECT RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION FROM CLIENTES" #Creo la variable de la petición y escrivo el SELECT de la bd
-        cursor.execute(sql1) #ejecuto la variable de la petición
-        rows = cursor.fetchall() #Con esto tomo todo el resultado del select
-        lista1 = [] #creamos lista para guardar todos los clientes de la bd uno por uno
+        cone = get_conexion() # se crea variable y se le entrega a cone
+        cursor = cone.cursor() # cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
+        sql1 = "SELECT RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION FROM CLIENTES" # Creo la variable de la petición y escribo el SELECT de la bd
+        cursor.execute(sql1) # ejecuto la variable de la petición
+        rows = cursor.fetchall() # Con esto tomo todo el resultado del select
+        lista1 = [] # creamos lista para guardar todos los clientes de la bd uno por uno
         for c in rows: # creo c de clientes
-            cliente = {"RUT": c[0], "NOMBRE_COMPLETO": c[1], "EMAIL": c[2], "CONTRASENIA": c[3], "REGION": c[4], "COMUNA": c[5], "DIRECCION": c[6]} #creo variable/diccionario y le pongo los atributos del select
-            lista1.append(cliente) #esto recorre cliente por cliente buscando todos los datos solicitados
-        return lista1 #Aqui devuelve la lista con todos los clientes
+            cliente = {"RUT": c[0], "NOMBRE_COMPLETO": c[1], "EMAIL": c[2], "CONTRASENIA": c[3], "REGION": c[4], "COMUNA": c[5], "DIRECCION": c[6]} # creo variable/diccionario y le pongo los atributos del select
+            lista1.append(cliente) # esto recorre cliente por cliente buscando todos los datos solicitados
+        return lista1 # Aqui devuelve la lista con todos los clientes
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obetener usuarios: {str(e)}") #Error de tipo petición y se le entregan: codigo de rror, mensaje a entregar con ese codigo y se convierte a string la variable
-    finally: 
+        raise HTTPException(status_code=500, detail=f"Error al obtener usuarios: {str(e)}") # Error de tipo petición y se le entregan: codigo de error, mensaje a entregar con ese codigo y se convierte a string la variable
+    finally:
+        if 'cone' in locals(): # Esto cierra la conexión
+            cone.close()
+        if 'cursor' in locals(): # Esto cierra el cursor
+            cursor.close()
+
+# POST para login, validando contraseña con hash
+@api.post("/login")
+def login(datos: LoginData): # recibe un JSON con email y contrasenia validado con LoginData
+    try:
+        cone = get_conexion() # se crea variable y se le entrega a cone
+        cursor = cone.cursor() # cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
+        sql = "SELECT CONTRASENIA FROM CLIENTES WHERE EMAIL = :email"  # buscamos la contraseña hash guardada en bd para ese email
+        cursor.execute(sql, {"email": datos.email}) # ejecuto la variable de la petición
+        resultado = cursor.fetchone()
+        
+        if resultado is None:
+            # No existe ese email en la BD
+            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+
+        password_hash_db = resultado[0]  # contraseña almacenada en la BD (hash)
+        # Validamos el password ingresado con el hash almacenado
+        if bcrypt.checkpw(datos.contrasenia.encode('utf-8'), password_hash_db.encode('utf-8')):
+            return {"mensaje": "Login exitoso"}
+        else:
+            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}") #Error de tipo petición y se le entregan: codigo de error, mensaje a entregar con ese codigo y se convierte a string la variable
+    finally:
+        if 'cone' in locals(): #Esto cierra la conexión
+            cone.close()
         if 'cursor' in locals(): #Esto cierra el cursor
             cursor.close()
-        if 'cone' in locals(): #Esto cierra la conexion
-            cone.close()
+            
