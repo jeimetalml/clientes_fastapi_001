@@ -1,8 +1,9 @@
 # Pondremos una libreria (minuscula es la libreria y mayusculas son los metodos que tiene la libreria):
 from fastapi import FastAPI, HTTPException # HTTPException es un error de tipo petición
-from pydantic import BaseModel  # Para validar y estructurar datos de entrada
+from pydantic import BaseModel, Field # Para validar y estructurar datos de entrada; Field se usará para definir opcionales
 import cx_Oracle # libreria que conecta python con ORACLE
 import bcrypt  # libreria para hashear y validar contraseñas
+from typing import Optional # para campos opcionales en PATCH
 
 # creamos una variable de la API:
 api = FastAPI()
@@ -22,6 +23,15 @@ class Cliente(BaseModel):
     comuna: str
     direccion: str
 
+# Modelo para PATCH: todos los campos son opcionales (excepto rut, que se recibe en path)
+class ClientePatch(BaseModel):
+    nombre_completo: Optional[str] = None
+    email: Optional[str] = None
+    contrasenia: Optional[str] = None
+    region: Optional[str] = None
+    comuna: Optional[str] = None
+    direccion: Optional[str] = None
+
 # Haremos la conexión con ORACLE:
 def get_conexion(): # variable de conexion
     try:
@@ -34,7 +44,7 @@ def get_conexion(): # variable de conexion
 
 # Ahora haremos endpoints:
 
-# GET
+# GET para listar los clientes
 @api.get("/clientes") # en / va la ruta en la que aparecerán los datos
 def get_clientes():
     try:
@@ -181,4 +191,63 @@ def eliminar_cliente(rut: int):
         if 'cursor' in locals():
             cursor.close()
         if 'cone' in locals():
+            cone.close()
+
+# PATCH para actualizar parcialmente un cliente (por rut)
+@api.patch("/clientes/{rut}")
+def actualizar_cliente_parcial(rut: int, cliente: ClientePatch): # Recibe rut por path y datos parciales en body
+    try:
+        cone = get_conexion() # Creamos conexión
+        cursor = cone.cursor() # Creamos cursor
+
+        # Verificamos que el cliente exista antes de actualizar
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        if cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado") # Si no existe, error 404
+
+        campos_a_actualizar = [] # Lista que almacenará los campos a actualizar en SQL
+        valores = {} # Diccionario para los valores bind del execute
+
+        # Por cada campo opcional que venga en el JSON, se agrega a la lista y al diccionario
+        if cliente.nombre_completo is not None:
+            campos_a_actualizar.append("NOMBRE_COMPLETO = :nombre")
+            valores["nombre"] = cliente.nombre_completo
+        if cliente.email is not None:
+            campos_a_actualizar.append("EMAIL = :email")
+            valores["email"] = cliente.email
+        if cliente.contrasenia is not None:
+            # Hasheamos la contraseña si viene para actualizar
+            hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            campos_a_actualizar.append("CONTRASENIA = :contrasenia")
+            valores["contrasenia"] = hashed_password
+        if cliente.region is not None:
+            campos_a_actualizar.append("REGION = :region")
+            valores["region"] = cliente.region
+        if cliente.comuna is not None:
+            campos_a_actualizar.append("COMUNA = :comuna")
+            valores["comuna"] = cliente.comuna
+        if cliente.direccion is not None:
+            campos_a_actualizar.append("DIRECCION = :direccion")
+            valores["direccion"] = cliente.direccion
+
+        if not campos_a_actualizar:
+            # Si no se envió ningún campo para actualizar, devolvemos error 400
+            raise HTTPException(status_code=400, detail="No se enviaron campos para actualizar")
+
+        valores["rut"] = rut # agregamos el rut para la cláusula WHERE
+
+        # Construimos la consulta SQL dinámicamente
+        sql = f"UPDATE CLIENTES SET {', '.join(campos_a_actualizar)} WHERE RUT = :rut"
+
+        cursor.execute(sql, valores) # Ejecutamos la consulta con los valores bind
+        cone.commit() # Confirmamos los cambios en la base de datos
+
+        return {"mensaje": "Cliente actualizado parcialmente exitosamente"} # Mensaje de éxito
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente parcialmente: {str(e)}") # Manejo de error
+    finally:
+        if 'cursor' in locals(): # Cerramos cursor si existe
+            cursor.close()
+        if 'cone' in locals(): # Cerramos conexión si existe
             cone.close()
