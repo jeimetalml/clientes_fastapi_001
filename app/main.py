@@ -1,113 +1,128 @@
 # Pondremos una libreria (minuscula es la libreria y mayusculas son los metodos que tiene la libreria):
-from fastapi import FastAPI, HTTPException # HTTPException es un error de tipo petición
-from pydantic import BaseModel, Field # Para validar y estructurar datos de entrada; Field se usará para definir opcionales
-import cx_Oracle # libreria que conecta python con ORACLE
+from fastapi import FastAPI, HTTPException  # HTTPException es un error de tipo petición
+from pydantic import BaseModel, Field  # Para validar y estructurar datos de entrada; Field lo uso para definir opcionales xd
+import cx_Oracle  # libreria que conecta python con ORACLE
 import bcrypt  # libreria para hashear y validar contraseñas
-from typing import Optional # para campos opcionales en PATCH
+from typing import Optional  # para campos opcionales en PATCH
 
-# creamos una variable de la API:
-api = FastAPI()
+# Importamos middleware para manejar CORS (control de acceso desde distintos dominios)
+from fastapi.middleware.cors import CORSMiddleware  
+
+# crearé una variable de la API:
+api = FastAPI()  # Instanciamos la aplicación FastAPI
+
+# Definimos lista con orígenes permitidos para acceder a la API (solo estos podrán hacer peticiones)
+origins = [
+    "http://localhost",      # Permitir el localhost básico
+    "http://localhost:8100", # Puerto común para Ionic en el desarrollo
+    # aqui abajito le podemos agregar otros adicionales
+]
+
+# Agregamos middleware CORS a la API para controlar accesos desde distintos dominios
+api.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,       # Aquí le decimos que sólo estos orígenes podrán acceder
+    allow_credentials=True,      # Permitir envío de cookies y headers con credenciales
+    allow_methods=["*"],         # Permitir todos los métodos HTTP (GET, POST, PUT, DELETE, etc)
+    allow_headers=["*"],         # Permitir todos los headers
+)
 
 # Modelo para validar datos de login (estructura que espera el endpoint):
 class LoginData(BaseModel):
-    email: str
-    contrasenia: str
+    email: str  # Email del cliente
+    contrasenia: str  # Contraseña del cliente
 
 # Modelo para validar datos de cliente al crear o actualizar:
 class Cliente(BaseModel):
-    rut: int
-    nombre_completo: str
-    email: str
-    contrasenia: str
-    region: str
-    comuna: str
-    direccion: str
+    rut: int  # RUT único del cliente
+    nombre_completo: str  # Nombre completo del cliente
+    email: str  # Email del cliente
+    contrasenia: str  # Contraseña (en texto plano para hashear al guardar)
+    region: str  # Región de residencia
+    comuna: str  # Comuna de residencia
+    direccion: str  # Dirección del cliente
 
 # Modelo para PATCH: todos los campos son opcionales (excepto rut, que se recibe en path)
 class ClientePatch(BaseModel):
-    nombre_completo: Optional[str] = None
-    email: Optional[str] = None
-    contrasenia: Optional[str] = None
-    region: Optional[str] = None
-    comuna: Optional[str] = None
-    direccion: Optional[str] = None
+    nombre_completo: Optional[str] = None  # Nombre completo opcional para actualización parcial
+    email: Optional[str] = None  # Email opcional
+    contrasenia: Optional[str] = None  # Contraseña opcional
+    region: Optional[str] = None  # Región opcional
+    comuna: Optional[str] = None  # Comuna opcional
+    direccion: Optional[str] = None  # Dirección opcional
 
 # Haremos la conexión con ORACLE:
-def get_conexion(): # variable de conexion
+def get_conexion():  # variable de conexion
     try:
-        dsn = cx_Oracle.makedsn("localhost", 1521, service_name="XE") # con dsn le digo de donde vienen los datos para la conexion / se llama a cx_Oracle para crear el origen de datos y se le entrega: nombre o número del host, puerto, nombre del servidor(en cada pc es diferente)
-        conexion = cx_Oracle.connect(user="integracion", password="integracion", dsn=dsn) # con esto creamos la conexion y entregamos 3 cosas: usuario de BD, clave usuario BD, donde se va a conectar
-        return conexion
+        dsn = cx_Oracle.makedsn("localhost", 1521, service_name="XE")  # Aqui va el DSN (Data Source Name) con host, puerto y servicio de la base de datos
+        conexion = cx_Oracle.connect(user="integracion", password="integracion", dsn=dsn)  # Aqui va la conexión usando usuario, contraseña y DSN
+        return conexion  # Devolvemos conexión activa
     except Exception as ex:
-        print("Error al conectar:", ex)
-        raise
+        print("Error al conectar:", ex)  # Mostramos error en consola
+        raise  # Re-lanzamos error para manejarlo afuera
 
-# Ahora haremos endpoints:
+# Ahora Haré algunos endpoints:
 
 # GET para listar los clientes
-@api.get("/clientes") # en / va la ruta en la que aparecerán los datos
+@api.get("/clientes")  # Ruta para listar clientes
 def get_clientes():
     try:
-        cone = get_conexion() # se crea variable y se le entrega a cone
-        cursor = cone.cursor() # cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
-        sql1 = "SELECT RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION FROM CLIENTES" # Creo la variable de la petición y escribo el SELECT de la bd
-        cursor.execute(sql1) # ejecuto la variable de la petición
-        rows = cursor.fetchall() # Con esto tomo todo el resultado del select
-        lista1 = [] # creamos lista para guardar todos los clientes de la bd uno por uno
-        for c in rows: # creo c de clientes
-            cliente = {"RUT": c[0], "NOMBRE_COMPLETO": c[1], "EMAIL": c[2], "CONTRASENIA": c[3], "REGION": c[4], "COMUNA": c[5], "DIRECCION": c[6]} # creo variable/diccionario y le pongo los atributos del select
-            lista1.append(cliente) # esto recorre cliente por cliente buscando todos los datos solicitados
-        return lista1 # Aqui devuelve la lista con todos los clientes
+        cone = get_conexion()  # se crea variable y se le entrega a cone
+        cursor = cone.cursor()  # cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
+        sql1 = "SELECT RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION FROM CLIENTES"  # Consulta para obtener todos los campos relevantes de la tabla CLIENTES
+        cursor.execute(sql1)  # ejecuto la variable de la petición
+        rows = cursor.fetchall()  # Con esto tomo todo el resultado del select
+        lista1 = []  # creamos lista para guardar todos los clientes de la bd uno por uno
+        for c in rows:  # creo c de clientes
+            cliente = {"RUT": c[0], "NOMBRE_COMPLETO": c[1], "EMAIL": c[2], "CONTRASENIA": c[3], "REGION": c[4], "COMUNA": c[5], "DIRECCION": c[6]}  # Aqui va el diccionario con los datos de cada cliente, usando índices de columnas
+            lista1.append(cliente)  # agregamos el diccionario a la lista
+        return lista1  # Aqui devuelve la lista con todos los clientes
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener usuarios: {str(e)}") # Error de tipo petición y se le entregan: codigo de error, mensaje a entregar con ese codigo y se convierte a string la variable
+        raise HTTPException(status_code=500, detail=f"Error al obtener usuarios: {str(e)}")  # Si ocurre error devolvemos código 500 con detalle del error
+    finally:
+        if 'cursor' in locals():  # Esto cierra el cursor
+            cursor.close()
+        if 'cone' in locals(): #Esto cierra la conexión
+            cone.close()
+
+# POST para login, validando contraseña con hash
+@api.post("/login")  # Ruta para login
+def login(datos: LoginData):  # recibe un JSON con email y contrasenia validado con LoginData
+    try:
+        cone = get_conexion()  # se crea variable y se le entrega a cone
+        cursor = cone.cursor()  # cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
+        sql = "SELECT CONTRASENIA FROM CLIENTES WHERE EMAIL = :email"  # Consulta para obtener contraseña hasheada almacenada para ese email
+        cursor.execute(sql, {"email": datos.email})  # ejecuto la variable de la petición
+        resultado = cursor.fetchone()  # Tomamos primer resultado (único)
+
+        if resultado is None:
+            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos") # Este error es en caso de que no exista ese email en la BD, error 401
+
+        password_hash_db = resultado[0]  # contraseña almacenada en la BD (hash)
+        if bcrypt.checkpw(datos.contrasenia.encode('utf-8'), password_hash_db.encode('utf-8')): # Aqui se valida el password ingresado con el hash almacenado
+            return {"mensaje": "Login exitoso"}  # Login correcto
+        else:
+            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")  # Error login por datos incorrectos
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}")  # Error general de servidor en login
     finally:
         if 'cursor' in locals(): # Esto cierra el cursor
             cursor.close()
         if 'cone' in locals(): # Esto cierra la conexión
             cone.close()
 
-# POST para login, validando contraseña con hash
-@api.post("/login")
-def login(datos: LoginData): # recibe un JSON con email y contrasenia validado con LoginData
-    try:
-        cone = get_conexion() # se crea variable y se le entrega a cone
-        cursor = cone.cursor() # cursor es un elemento ejecutable que permite ejecutar comandos sql de una bd
-        sql = "SELECT CONTRASENIA FROM CLIENTES WHERE EMAIL = :email"  # buscamos la contraseña hash guardada en bd para ese email
-        cursor.execute(sql, {"email": datos.email}) # ejecuto la variable de la petición
-        resultado = cursor.fetchone()
-        
-        if resultado is None:
-            # No existe ese email en la BD
-            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
-
-        password_hash_db = resultado[0]  # contraseña almacenada en la BD (hash)
-        # Validamos el password ingresado con el hash almacenado
-        if bcrypt.checkpw(datos.contrasenia.encode('utf-8'), password_hash_db.encode('utf-8')):
-            return {"mensaje": "Login exitoso"}
-        else:
-            raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en login: {str(e)}") #Error de tipo petición y se le entregan: codigo de error, mensaje a entregar con ese codigo y se convierte a string la variable
-    finally:
-        if 'cursor' in locals(): #Esto cierra el cursor
-            cursor.close()
-        if 'cone' in locals(): #Esto cierra la conexión
-            cone.close()
-
 # POST para crear un nuevo cliente
-@api.post("/clientes")
+@api.post("/clientes")  # Ruta para crear cliente
 def crear_cliente(cliente: Cliente):
     try:
-        cone = get_conexion() # conexion
-        cursor = cone.cursor() # cursor
-        # Hasheamos la contraseña antes de guardarla
-        hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        # Insert SQL con bind variables para evitar inyección SQL
+        cone = get_conexion()  # conexion
+        cursor = cone.cursor()  # cursor
+        hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') # Hasheamos la contraseña antes de guardarla para seguridad
         sql = """
-        INSERT INTO CLIENTES (RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION)
-        VALUES (:rut, :nombre, :email, :contrasenia, :region, :comuna, :direccion)
-        """
+        INSERT INTO CLIENTES (RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION) 
+        VALUES (:rut, :nombre, :email, :contrasenia, :region, :comuna, :direccion) 
+        """ # Insert SQL con bind variables para evitar inyección SQL
         cursor.execute(sql, {
             "rut": cliente.rut,
             "nombre": cliente.nombre_completo,
@@ -117,31 +132,29 @@ def crear_cliente(cliente: Cliente):
             "comuna": cliente.comuna,
             "direccion": cliente.direccion
         })
-        cone.commit()
-        return {"mensaje": "Cliente creado exitosamente"}
+        cone.commit()  # Confirmamos cambios en la base de datos
+        return {"mensaje": "Cliente creado exitosamente"}  # Mensaje de éxito
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al crear cliente: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al crear cliente: {str(e)}") # Error al crear cliente
     finally:
-        if 'cursor' in locals():
+        if 'cursor' in locals(): #Esto cierra el cursor
             cursor.close()
-        if 'cone' in locals():
+        if 'cone' in locals(): # Esto cierra la conexión
             cone.close()
 
 # PUT para actualizar un cliente existente (por rut)
-@api.put("/clientes/{rut}")
+@api.put("/clientes/{rut}")  # Ruta para actualizar cliente completo
 def actualizar_cliente(rut: int, cliente: Cliente):
     try:
-        cone = get_conexion()
-        cursor = cone.cursor()
-        # Hasheamos la contraseña antes de actualizar
-        hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        cone = get_conexion()  # conexión
+        cursor = cone.cursor()  # cursor
+        hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') # Hasheamos la contraseña antes de actualizar para seguridad
 
-        # Verificamos que el cliente exista
-        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut}) # Con esto validamos que el cliente exista antes de actualizar
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+            raise HTTPException(status_code=404, detail="Cliente no encontrado") # Este error se usa en caso que el cliente no exista, error 404
 
-        # Actualizamos los datos
+        # Actualizamos todos los campos del cliente
         sql = """
         UPDATE CLIENTES SET
             NOMBRE_COMPLETO = :nombre,
@@ -161,52 +174,49 @@ def actualizar_cliente(rut: int, cliente: Cliente):
             "direccion": cliente.direccion,
             "rut": rut
         })
-        cone.commit()
-        return {"mensaje": "Cliente actualizado exitosamente"}
+        cone.commit()  # Confirmamos cambios
+        return {"mensaje": "Cliente actualizado exitosamente"}  # Mensaje éxito
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}") # Error general al actualizar cliente
     finally:
-        if 'cursor' in locals():
+        if 'cursor' in locals(): # Esto cierra el cursor
             cursor.close()
-        if 'cone' in locals():
+        if 'cone' in locals(): # Esto ciera la conexión
             cone.close()
 
 # DELETE para eliminar un cliente por rut
-@api.delete("/clientes/{rut}")
+@api.delete("/clientes/{rut}")  # Ruta para eliminar cliente
 def eliminar_cliente(rut: int):
     try:
-        cone = get_conexion()
-        cursor = cone.cursor()
-        # Verificamos que exista el cliente antes de eliminar
-        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        cone = get_conexion()  # conexión
+        cursor = cone.cursor()  # cursor
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut}) # Verificamos que exista el cliente antes de eliminar
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        # Ejecutamos delete
-        cursor.execute("DELETE FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
-        cone.commit()
-        return {"mensaje": "Cliente eliminado exitosamente"}
+            raise HTTPException(status_code=404, detail="Cliente no encontrado") # Este error se usa si el cliente no se encuentra, error 404
+        cursor.execute("DELETE FROM CLIENTES WHERE RUT = :rut", {"rut": rut}) # Aquí ejecutamos la eliminación
+        cone.commit()  # Confirmamos cambios
+        return {"mensaje": "Cliente eliminado exitosamente"}  # Mensaje de éxito
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al eliminar cliente: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al eliminar cliente: {str(e)}") # Error general al eliminar cliente
     finally:
-        if 'cursor' in locals():
+        if 'cursor' in locals(): # Esto cierra el cursor
             cursor.close()
-        if 'cone' in locals():
+        if 'cone' in locals(): # Esto cierra la conexión
             cone.close()
 
 # PATCH para actualizar parcialmente un cliente (por rut)
-@api.patch("/clientes/{rut}")
-def actualizar_cliente_parcial(rut: int, cliente: ClientePatch): # Recibe rut por path y datos parciales en body
+@api.patch("/clientes/{rut}")  # Ruta para actualización parcial
+def actualizar_cliente_parcial(rut: int, cliente: ClientePatch):  # Recibe rut por path y datos parciales en body
     try:
-        cone = get_conexion() # Creamos conexión
-        cursor = cone.cursor() # Creamos cursor
+        cone = get_conexion()  # Creamos conexión
+        cursor = cone.cursor()  # Creamos cursor
 
-        # Verificamos que el cliente exista antes de actualizar
-        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut})
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut}) # Verificamos que el cliente exista antes de actualizar
         if cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado") # Si no existe, error 404
+            raise HTTPException(status_code=404, detail="Cliente no encontrado") # Este eror se usa si el cliente no se encuentra, error 404
 
-        campos_a_actualizar = [] # Lista que almacenará los campos a actualizar en SQL
-        valores = {} # Diccionario para los valores bind del execute
+        campos_a_actualizar = []  # Lista que almacenará los campos a actualizar en SQL
+        valores = {}  # Diccionario para los valores bind del execute
 
         # Por cada campo opcional que venga en el JSON, se agrega a la lista y al diccionario
         if cliente.nombre_completo is not None:
@@ -216,8 +226,7 @@ def actualizar_cliente_parcial(rut: int, cliente: ClientePatch): # Recibe rut po
             campos_a_actualizar.append("EMAIL = :email")
             valores["email"] = cliente.email
         if cliente.contrasenia is not None:
-            # Hasheamos la contraseña si viene para actualizar
-            hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') # Hasheamos la contraseña si viene para actualizar
             campos_a_actualizar.append("CONTRASENIA = :contrasenia")
             valores["contrasenia"] = hashed_password
         if cliente.region is not None:
@@ -231,23 +240,21 @@ def actualizar_cliente_parcial(rut: int, cliente: ClientePatch): # Recibe rut po
             valores["direccion"] = cliente.direccion
 
         if not campos_a_actualizar:
-            # Si no se envió ningún campo para actualizar, devolvemos error 400
-            raise HTTPException(status_code=400, detail="No se enviaron campos para actualizar")
+            raise HTTPException(status_code=400, detail="No se enviaron campos para actualizar") # Si no se envió ningún campo para actualizar, devolvemos error 400
 
-        valores["rut"] = rut # agregamos el rut para la cláusula WHERE
+        valores["rut"] = rut  # agregamos el rut para la cláusula WHERE
 
-        # Construimos la consulta SQL dinámicamente
-        sql = f"UPDATE CLIENTES SET {', '.join(campos_a_actualizar)} WHERE RUT = :rut"
+        sql = f"UPDATE CLIENTES SET {', '.join(campos_a_actualizar)} WHERE RUT = :rut" # Construimos la consulta SQL dinámicamente con los campos a actualizar
 
-        cursor.execute(sql, valores) # Ejecutamos la consulta con los valores bind
-        cone.commit() # Confirmamos los cambios en la base de datos
+        cursor.execute(sql, valores)  # Ejecutamos la consulta con los valores bind
+        cone.commit()  # Confirmamos los cambios en la base de datos
 
-        return {"mensaje": "Cliente actualizado parcialmente exitosamente"} # Mensaje de éxito
+        return {"mensaje": "Cliente actualizado parcialmente exitosamente"}  # Mensaje de éxito
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente parcialmente: {str(e)}") # Manejo de error
+        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente parcialmente: {str(e)}") # Manejo de error general en actualización parcial
     finally:
-        if 'cursor' in locals(): # Cerramos cursor si existe
+        if 'cursor' in locals(): # Esto cierra el cursor
             cursor.close()
-        if 'cone' in locals(): # Cerramos conexión si existe
+        if 'cone' in locals(): #Esto cierra la conexión
             cone.close()
