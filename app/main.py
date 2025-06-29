@@ -150,6 +150,9 @@ def crear_cliente(cliente: Cliente):
         # Validar formato del RUT
     if not validar_rut_con_dv(cliente.rut):
         raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
+    # Validar que el nombre no sea solo números
+    if re.fullmatch(r'\d+', cliente.nombre_completo):
+        raise HTTPException(status_code=400, detail="El nombre no puede contener solo números")
 
     try:
         cone = get_conexion()  # conexion
