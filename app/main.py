@@ -224,6 +224,11 @@ def actualizar_cliente(rut: str, cliente: Cliente):
         cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut}) # Con esto validamos que el cliente exista antes de actualizar
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado") # Este error se usa en caso que el cliente no exista, error 404
+        
+        # Validar que el email no esté usado por otro cliente distinto
+        cursor.execute("SELECT RUT FROM CLIENTES WHERE EMAIL = :email AND RUT != :rut", {"email": cliente.email, "rut": rut})
+        if cursor.fetchone() is not None:
+            raise HTTPException(status_code=400, detail="El correo ya está en uso por otro cliente")
 
         # Actualizamos todos los campos del cliente
         sql = """
@@ -304,6 +309,9 @@ def actualizar_cliente_parcial(rut: str, cliente: ClientePatch):  # Recibe rut p
             campos_a_actualizar.append("NOMBRE_COMPLETO = :nombre")
             valores["nombre"] = cliente.nombre_completo
         if cliente.email is not None:
+            cursor.execute("SELECT RUT FROM CLIENTES WHERE EMAIL = :email AND RUT != :rut", {"email": cliente.email, "rut": rut})
+            if cursor.fetchone() is not None:
+                raise HTTPException(status_code=400, detail="El correo ya está en uso por otro cliente")
             campos_a_actualizar.append("EMAIL = :email")
             valores["email"] = cliente.email
         if cliente.contrasenia is not None:
