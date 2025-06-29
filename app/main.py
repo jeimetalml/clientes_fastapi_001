@@ -6,6 +6,16 @@ import bcrypt  # libreria para hashear y validar contraseñas
 from typing import Optional  # para campos opcionales en PATCH
 import re #Para la validación del rut
 
+def validar_email(email: str):
+    # Validación básica con expresión regular
+    patron = r"^[\w\.-]+@[\w\.-]+\.(com|cl|org|net|edu)$"
+    if not re.match(patron, email):
+        raise HTTPException(
+            status_code=400,
+            detail="El correo ingresado no es válido. Debe contener '@' y un dominio como '.cl' o '.com'."
+        )
+
+
 # Valida que el RUT tenga el formato chileno sin puntos y con guion (ej: 12345678-9)
 def validar_formato_rut(rut: str) -> bool:
     return bool(re.match(r"^\d{7,8}-[\dkK]$", rut))
@@ -155,8 +165,15 @@ def crear_cliente(cliente: Cliente):
         raise HTTPException(status_code=400, detail="El nombre no puede contener solo números")
 
     try:
+        validar_email(cliente.email)
+
         cone = get_conexion()  # conexion
         cursor = cone.cursor()  # cursor
+        #Validar que el correo no esté repetido
+        cursor.execute("SELECT EMAIL FROM CLIENTES WHERE EMAIL = :email", {"email": cliente.email})
+        if cursor.fetchone():
+             raise HTTPException(status_code=400, detail="El email ya está registrado en otro cliente")
+
         hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') # Hasheamos la contraseña antes de guardarla para seguridad
         sql = """
         INSERT INTO CLIENTES (RUT, NOMBRE_COMPLETO, EMAIL, CONTRASENIA, REGION, COMUNA, DIRECCION) 
@@ -189,6 +206,8 @@ def actualizar_cliente(rut: str, cliente: Cliente):
         raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
 
     try:
+        validar_email(cliente.email)
+
         cone = get_conexion()  # conexión
         cursor = cone.cursor()  # cursor
         hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') # Hasheamos la contraseña antes de actualizar para seguridad
@@ -259,6 +278,8 @@ def actualizar_cliente_parcial(rut: str, cliente: ClientePatch):  # Recibe rut p
         raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
 
     try:
+        validar_email(cliente.email)
+
         cone = get_conexion()  # Creamos conexión
         cursor = cone.cursor()  # Creamos cursor
 
