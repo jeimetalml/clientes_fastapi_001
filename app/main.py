@@ -4,6 +4,38 @@ from pydantic import BaseModel, Field  # Para validar y estructurar datos de ent
 import cx_Oracle  # libreria que conecta python con ORACLE
 import bcrypt  # libreria para hashear y validar contraseñas
 from typing import Optional  # para campos opcionales en PATCH
+import re #Para la validación del rut
+
+# Valida que el RUT tenga el formato chileno sin puntos y con guion (ej: 12345678-9)
+def validar_formato_rut(rut: str) -> bool:
+    return bool(re.match(r"^\d{7,8}-[\dkK]$", rut))
+
+#Validar que el digito verificador y el rut correspondan
+def validar_rut_con_dv(rut: str) -> bool:
+    if not validar_formato_rut(rut):
+        return False
+
+    cuerpo, dv_ingresado = rut.upper().split("-")
+    suma = 0
+    multiplicador = 2
+
+    for digito in reversed(cuerpo):
+        suma += int(digito) * multiplicador
+        multiplicador += 1
+        if multiplicador > 7:
+            multiplicador = 2
+
+    resto = suma % 11
+    dv_calculado = 11 - resto
+
+    if dv_calculado == 11:
+        dv_correcto = "0"
+    elif dv_calculado == 10:
+        dv_correcto = "K"
+    else:
+        dv_correcto = str(dv_calculado)
+
+    return dv_ingresado == dv_correcto
 
 # Importamos middleware para manejar CORS (control de acceso desde distintos dominios)
 from fastapi.middleware.cors import CORSMiddleware  
@@ -34,7 +66,7 @@ class LoginData(BaseModel):
 
 # Modelo para validar datos de cliente al crear o actualizar:
 class Cliente(BaseModel):
-    rut: int  # RUT único del cliente
+    rut: str  # RUT único del cliente
     nombre_completo: str  # Nombre completo del cliente
     email: str  # Email del cliente
     contrasenia: str  # Contraseña (en texto plano para hashear al guardar)
@@ -115,6 +147,10 @@ def login(datos: LoginData):  # recibe un JSON con email y contrasenia validado 
 # POST para crear un nuevo cliente
 @api.post("/clientes")  # Ruta para crear cliente
 def crear_cliente(cliente: Cliente):
+        # Validar formato del RUT
+    if not validar_rut_con_dv(cliente.rut):
+        raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
+
     try:
         cone = get_conexion()  # conexion
         cursor = cone.cursor()  # cursor
@@ -144,7 +180,11 @@ def crear_cliente(cliente: Cliente):
 
 # PUT para actualizar un cliente existente (por rut)
 @api.put("/clientes/{rut}")  # Ruta para actualizar cliente completo
-def actualizar_cliente(rut: int, cliente: Cliente):
+def actualizar_cliente(rut: str, cliente: Cliente):
+        # Validar formato del RUT recibido
+    if not validar_rut_con_dv(rut):
+        raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
+
     try:
         cone = get_conexion()  # conexión
         cursor = cone.cursor()  # cursor
@@ -186,7 +226,11 @@ def actualizar_cliente(rut: int, cliente: Cliente):
 
 # DELETE para eliminar un cliente por rut
 @api.delete("/clientes/{rut}")  # Ruta para eliminar cliente
-def eliminar_cliente(rut: int):
+def eliminar_cliente(rut: str):
+        # Validar formato del RUT recibido
+    if not validar_rut_con_dv(rut):
+        raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
+
     try:
         cone = get_conexion()  # conexión
         cursor = cone.cursor()  # cursor
@@ -206,7 +250,11 @@ def eliminar_cliente(rut: int):
 
 # PATCH para actualizar parcialmente un cliente (por rut)
 @api.patch("/clientes/{rut}")  # Ruta para actualización parcial
-def actualizar_cliente_parcial(rut: int, cliente: ClientePatch):  # Recibe rut por path y datos parciales en body
+def actualizar_cliente_parcial(rut: str, cliente: ClientePatch):  # Recibe rut por path y datos parciales en body
+        # Validar formato del RUT recibido
+    if not validar_rut_con_dv(rut):
+        raise HTTPException(status_code=400, detail="El RUT ingresado no es válido o tiene un dígito verificador incorrecto. Ejemplo correcto: 12345678-9")
+
     try:
         cone = get_conexion()  # Creamos conexión
         cursor = cone.cursor()  # Creamos cursor
