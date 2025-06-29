@@ -167,6 +167,10 @@ def crear_cliente(cliente: Cliente):
     try:
         validar_email(cliente.email)
 
+        # Validar longitud mínima de contraseña
+        if len(cliente.contrasenia) < 8:
+            raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+
         cone = get_conexion()  # conexion
         cursor = cone.cursor()  # cursor
         #Validar que el correo no esté repetido
@@ -207,6 +211,11 @@ def actualizar_cliente(rut: str, cliente: Cliente):
 
     try:
         validar_email(cliente.email)
+
+        # Validar longitud de contraseña
+        if len(cliente.contrasenia) < 8:
+            raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+        
 
         cone = get_conexion()  # conexión
         cursor = cone.cursor()  # cursor
@@ -298,6 +307,8 @@ def actualizar_cliente_parcial(rut: str, cliente: ClientePatch):  # Recibe rut p
             campos_a_actualizar.append("EMAIL = :email")
             valores["email"] = cliente.email
         if cliente.contrasenia is not None:
+            if len(cliente.contrasenia) < 8:
+                raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
             hashed_password = bcrypt.hashpw(cliente.contrasenia.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') # Hasheamos la contraseña si viene para actualizar
             campos_a_actualizar.append("CONTRASENIA = :contrasenia")
             valores["contrasenia"] = hashed_password
