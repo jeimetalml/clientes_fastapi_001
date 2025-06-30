@@ -25,6 +25,11 @@ regiones_y_comunas = {
     "Magallanes": ["Punta Arenas", "Laguna Blanca", "Río Verde", "San Gregorio", "Cabo de Hornos", "Antártica", "Porvenir", "Primavera", "Timaukel", "Natales", "Torres del Paine"]
 }
 
+def validar_region_comuna(region: str, comuna: str) -> bool:
+    region = region.strip().title()
+    comuna = comuna.strip().title()
+    return region in regiones_y_comunas and comuna in regiones_y_comunas[region]
+
 
 def validar_email(email: str):
     # Validación básica con expresión regular
@@ -187,6 +192,11 @@ def crear_cliente(cliente: Cliente):
     try:
         validar_email(cliente.email)
 
+        # Validar región y comuna
+        if not validar_region_comuna(cliente.region, cliente.comuna):
+            raise HTTPException(status_code=400, detail="Región y comuna no válidas")
+
+
         # Validar longitud mínima de contraseña
         if len(cliente.contrasenia) < 8:
             raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
@@ -231,6 +241,11 @@ def actualizar_cliente(rut: str, cliente: Cliente):
 
     try:
         validar_email(cliente.email)
+
+        # Validar región y comuna
+        if not validar_region_comuna(cliente.region, cliente.comuna):
+            raise HTTPException(status_code=400, detail="Región y comuna no válidas")
+
 
         # Validar longitud de contraseña
         if len(cliente.contrasenia) < 8:
@@ -320,6 +335,12 @@ def actualizar_cliente_parcial(rut: str, cliente: ClientePatch):  # Recibe rut p
         cursor.execute("SELECT RUT FROM CLIENTES WHERE RUT = :rut", {"rut": rut}) # Verificamos que el cliente exista antes de actualizar
         if cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado") # Este eror se usa si el cliente no se encuentra, error 404
+        
+        # Validar región y comuna si ambos campos están presentes
+        if cliente.region is not None and cliente.comuna is not None:
+            if not validar_region_comuna(cliente.region, cliente.comuna):
+                raise HTTPException(status_code=400, detail="Región y comuna no válidas")
+
 
         campos_a_actualizar = []  # Lista que almacenará los campos a actualizar en SQL
         valores = {}  # Diccionario para los valores bind del execute
